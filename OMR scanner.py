@@ -4,9 +4,15 @@ import csv
 import pandas as pd
 import pytesseract
 from tabulate import tabulate
+import io
 import os
 from pdf2image import convert_from_path
+from google.cloud import vision
+from google.cloud import vision_v1
+from google.cloud.vision_v1 import types
 
+os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = r'tcf-scanner-ccb138d4a9c9.json'
+client = vision.ImageAnnotatorClient()
 
 img_paths = []
 images = convert_from_path("e1.pdf", output_folder="extracted_images", fmt="png")
@@ -201,28 +207,57 @@ def processOMRSheet(img):
 
 
 def processTextSheet(img):
-    scale_factor = 1
-    image = cv2.resize(img, None, fx=scale_factor, fy=scale_factor, interpolation=cv2.INTER_AREA)
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    thresh = cv2.threshold(gray, 205, 255, cv2.THRESH_BINARY_INV)[1]
 
-    coursecode = pytesseract.image_to_string(thresh[512:563,350:598],config ="--psm 6")
+    def readImg(img):
+        content = cv2.imencode(".jpg", img)[1].tobytes()
+        image = vision_v1.types.Image(content=content)
+        response = client.document_text_detection(image=image)
+        texts = response.full_text_annotation.text
+        return texts
+    coursecode = readImg(img[512:563,350:598])
     coursecode = ''.join(char for char in coursecode if (char.isalpha() or char.isdigit()))
-    coursetitle = pytesseract.image_to_string(thresh[516:571,916:1565],config="--psm 6")
-    semester = pytesseract.image_to_string(thresh[583:649,303:681],config="--psm 6")
-    faculty = pytesseract.image_to_string(thresh[572:631,856:1442],config="psm 6")
+    coursetitle = readImg(img[516:571,916:1565])
+    semester = readImg(img[583:649,303:681])
+    faculty = readImg(img[572:631,856:1442])
     faculty = ''.join(char for char in faculty if char.isalpha())
-    qbox1 = thresh[726:956,88:1597]
-    qbox2 = thresh[1001:1232,88:1597]
-    qbox3 = thresh[1281:1510,88:1597]
-    qbox4 = thresh[1558:1781,88:1597]
-    qbox5 = thresh[1837:2115,88:1597]
+
+    # scale_factor = 1
+    # image = cv2.resize(img, None, fx=scale_factor, fy=scale_factor, interpolation=cv2.INTER_AREA)
+    # gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    # thresh = cv2.threshold(gray, 205, 255, cv2.THRESH_BINARY_INV)[1]
+    #
+    # coursecode = pytesseract.image_to_string(thresh[512:563,350:598],config ="--psm 6")
+    # coursecode = ''.join(char for char in coursecode if (char.isalpha() or char.isdigit()))
+    # coursetitle = pytesseract.image_to_string(thresh[516:571,916:1565],config="--psm 6")
+    # semester = pytesseract.image_to_string(thresh[583:649,303:681],config="--psm 6")
+    # faculty = pytesseract.image_to_string(thresh[572:631,856:1442],config="psm 6")
+    # faculty = ''.join(char for char in faculty if char.isalpha())
+
+
+    qbox1 = img[726:956,88:1597]
+    qbox2 = img[1001:1232,88:1597]
+    qbox3 = img[1281:1510,88:1597]
+    qbox4 = img[1558:1781,88:1597]
+    qbox5 = img[1837:2115,88:1597]
 
     qboxes = [qbox1,qbox2,qbox3,qbox4,qbox5]
     aboxes = []
+
     for box in qboxes:
-        answer = pytesseract.image_to_string(box, config="--psm 6")
-        aboxes.append(answer)
+        content = cv2.imencode(".jpg",box)[1].tobytes()
+        image = vision_v1.types.Image(content=content)
+        response = client.document_text_detection(image=image)
+        texts = response.full_text_annotation.text
+        aboxes.append(texts)
+        # with io.open(box, 'rb') as image_file:
+        #     content = image_file.read()
+        #
+        # image = vision_v1.types.Image(content=content)
+        # response = client.document_text_detection(image=image)
+        #
+        # answer = response.full_text_annotation.text
+        # # answer = pytesseract.image_to_string(box, config="--psm 6")
+        # aboxes.append(answer)
 
 
     header = ["q no.", "answers"]
@@ -239,11 +274,12 @@ def processTextSheet(img):
 
 
 
-for image in img_paths:
-    img = cv2.imread(image)
-    processOMRSheet(img)
+# for image in img_paths:
+#     img = cv2.imread(image)
+#     processOMRSheet(img)
 
 #img = cv2.imread(img_paths[0])
 #processOMRSheet(img)
 
-#hihihihihihihi
+img = cv2.imread("text0.png")
+processTextSheet(img)
