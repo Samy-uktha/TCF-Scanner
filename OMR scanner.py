@@ -217,7 +217,7 @@ def processTextSheet(img):
     coursecode = readImg(img[512:563,350:598])
     coursecode = ''.join(char for char in coursecode if (char.isalpha() or char.isdigit()))
     coursetitle = readImg(img[516:571,916:1565])
-    semester = readImg(img[583:649,303:681])
+    semester = readImg(img[577:633,309:491])
     faculty = readImg(img[572:631,856:1442])
     faculty = ''.join(char for char in faculty if char.isalpha())
 
@@ -248,7 +248,17 @@ def processTextSheet(img):
         image = vision_v1.types.Image(content=content)
         response = client.document_text_detection(image=image)
         texts = response.full_text_annotation.text
-        aboxes.append(texts)
+
+        word = ""
+        for alphabet in texts:
+            if alphabet.isalpha():
+                word += alphabet
+            elif alphabet == ".":
+                word += "\n"
+            else:
+                word += " "
+
+        aboxes.append(word)
         # with io.open(box, 'rb') as image_file:
         #     content = image_file.read()
         #
@@ -281,5 +291,5 @@ def processTextSheet(img):
 #img = cv2.imread(img_paths[0])
 #processOMRSheet(img)
 
-img = cv2.imread("text0.png")
+img = cv2.imread("edited2.png")
 processTextSheet(img)
