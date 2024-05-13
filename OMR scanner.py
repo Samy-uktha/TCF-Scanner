@@ -10,6 +10,7 @@ from pdf2image import convert_from_path
 from google.cloud import vision
 from google.cloud import vision_v1
 from google.cloud.vision_v1 import types
+from docxtpl import DocxTemplate
 
 os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = r'tcf-scanner-ccb138d4a9c9.json'
 client = vision.ImageAnnotatorClient()
@@ -20,6 +21,7 @@ for file in os.listdir("extracted_images"):
     path = os.path.join("extracted_images", file)
     img_paths.append(path)
 
+doc = DocxTemplate("report.docx")
 #img = cv2.imread(img_paths[0])
 
 coursecodes = []
@@ -31,8 +33,8 @@ def processOMRSheet(img):
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         thresh = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY_INV)[1]
 
-        course_name = thresh[450:488, 295:1542]
-        faculty_name = thresh[511:550, 295:1542]
+        course_name = pytesseract.image_to_string((thresh[450:488, 295:1542]),config="psm 6")
+        faculty_name = pytesseract.image_to_string((thresh[511:550, 295:1542]),config="psm 6")
         course_code = thresh[671:953, 297:753]
         batch = thresh[626:953, 780:1041]
         slot = thresh[634:841, 1092:1350]
@@ -41,8 +43,20 @@ def processOMRSheet(img):
         qbox3 = thresh[1523:1690, 1348:1567]
         qbox4 = thresh[1777:1943, 1348:1567]
 
-        return course_name, course_code, faculty_name, batch, slot, qbox1, qbox2, qbox3, qbox4
+        # def readImg(img):
+        #     content = cv2.imencode(".jpg", img)[1].tobytes()
+        #     image = vision_v1.types.Image(content=content)
+        #     response = client.document_text_detection(image=image)
+        #     texts = response.full_text_annotation.text
+        #     return texts
+        #
+        # faculty_name = readImg(faculty_name)
+        # course_name = readImg(course_name)
 
+        return course_name, course_code, faculty_name, batch, slot, qbox1, qbox2, qbox3, qbox4
+    # course_name,_,faculty_name,_,_,_,_,_,_ = getData(img)
+    # print(course_name)
+    # print(faculty_name)
     def getPixelArray(img, r, c):
         height, width = img.shape
         h = height // r
@@ -70,6 +84,12 @@ def processOMRSheet(img):
 
     course_name, course_code, faculty_name, batch, slot, qbox1, qbox2, qbox3, qbox4 = getData(img)
 
+    # faculty_name = pytesseract.image_to_string(faculty_name, config="psm 6")
+    # faculty_name = ''.join(char for char in faculty_name if char.isalpha())
+    #
+    # course_name = pytesseract.image_to_string(course_name, config="psm 6")
+
+    print(course_name)
     course_pixels = getPixelArray(course_code, 10, 6)
     batch_pixels = getPixelArray(batch, 5, 1)
     slot_pixels = getPixelArray(slot, 4, 2)
@@ -180,6 +200,7 @@ def processOMRSheet(img):
         for row in rows[1:]:
             rowfl = [float(value) for value in row]
             row[1] = sum(rowfl[4:]) / len(rowfl[4:])
+            row[3] = np.std(rowfl)
             values = []
             for value in rowfl:
                 values.append(value)
@@ -196,11 +217,33 @@ def processOMRSheet(img):
         with open(f"OMR_{courseCode}-{batch}.csv", 'w', newline='') as f:
             writer = csv.writer(f)
             writer.writerows(rows)
-
-
+        avg = []
+        med = []
+        std = []
+        d = {}
+        fil = csv.reader(open(f"OMR_{courseCode}-{batch}.csv", 'r'))
+        rows = []
+        for row in fil:
+            rows.append(row)
+        for i in range(1, len(rows)):
+            avg.append(round(float(rows[i][1]), 3))
+            med.append(round(float(rows[i][2]), 3))
+            std.append(round(float(rows[i][3]), 3))
+        for i in range(len(rows)):
+            d[f'a{i}0a'] = avg[i - 1]
+            d[f'a{i}1a'] = med[i - 1]
+            d[f'a{i}2a'] = std[i - 1]
+        context = d
+        context['faculty'] = f'{faculty_name}yoo'
+        context['code'] = f'{courseCode}'
+        context['codename'] = f'{course_name}yoo'
+        doc.render(context)
+        doc.save(f"report_{courseCode}-{batch}.docx")
 
 
     print(f"\nfollowing feedback given for course {courseCode} in slot {slot}\n")
+    print('data saved in csv file')
+    print('report generated')
     #print(tabulate(data, header))
     #print("data has been stored in csv file!!")
     #print(f"the score for this instructor is {score}/200")
@@ -284,12 +327,12 @@ def processTextSheet(img):
 
 
 
-# for image in img_paths:
-#     img = cv2.imread(image)
-#     processOMRSheet(img)
+for image in img_paths:
+    img = cv2.imread(image)
+    processOMRSheet(img)
 
 #img = cv2.imread(img_paths[0])
 #processOMRSheet(img)
 
-img = cv2.imread("edited2.png")
-processTextSheet(img)
+# img = cv2.imread("edited2.png")
+# processTextSheet(img)
